@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Reconstruction | Line Confocal 3D Fluorescent Microscope</title>
+    <style>
+        html {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #262d2c;
+            box-sizing: inherit;
+            overflow: hidden;
+        }
+
+        .frame {
+            /* padding: 50px; */
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            /* box-sizing: inherit;
+            overflow: hidden; */
+        }
+
+        .frame>* {
+            flex: 1 1 100%;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="frame">
+        <div class="container">
+          <canvas></canvas>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.159.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.159.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import {OrbitControls} from "three/addons/controls/OrbitControls.js";
+        import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
+        console.log(`using three.js r${THREE.REVISION}`);
+
+        function main() {
+            // Create Canvas and Renderer
+            const canvas = document.querySelector("canvas");
+            const renderer = new THREE.WebGLRenderer({antialias: true, alpha: false, precision: "highp", canvas});
+            THREE.ColorManagement.enabled = true;
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
+            // renderer.outputEncoding = THREE.sRGBEncoding;
+            
+            // Create camera & set up controls.
+
+            // // perspective camera
+            // const fov = 45;
+            // let aspect = window.innerWidth / window.innerHeight;
+            // const near = 0.1;
+            // const far = 50;
+            // const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+            // New orthographic camera
+            const zoom = 100;
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const camera = new THREE.OrthographicCamera(
+                width / -zoom,   // Left
+                width / zoom,    // Right
+                height / zoom,   // Top
+                height / -zoom,  // Bottom
+                0.5,          // Near
+                100          // Far
+            );
+
+            camera.position.set(10, 5, 10);
+            let controls = new OrbitControls(camera, renderer.domElement);
+            controls.target.set(0, 0.5, 0);
+            controls.enablePan = false;
+            controls.minDistance = 1.5;
+            controls.maxDistance = 30;
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.15;
+            controls.update();
+
+            // Create scene
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x262d2c);
+
+            // Grid
+            const grid_size = 10;
+            const grid_divisions = 10;
+            const gridHelper = new THREE.GridHelper(grid_size, grid_divisions, 0x748a87, 0x3a4443);
+            gridHelper.position.y = - 0;
+            gridHelper.position.x = - 0; 
+            scene.add(gridHelper);
+
+            // Load in the datapoints
+            // LATER: import data from file.
+            let debug_data_arr = [[[0.0, 0.0, 0.0], [0.0, 0.1, 0.1], [0.1, 0.0, 0.1]],
+                        [[0.1, 0.1, 0.1], [0.1, 0.0, 0.0]],
+                        [[0.0, 0.1, 0.05], [0.5, 0.1, 0.9], [0.1, 0.0, 0.3]]];
+            console.log(debug_data_arr);
+            console.log(typeof(debug_data_arr));
+            console.log(debug_data_arr.length);
+
+            // for each batch,
+            // 1. make a parent bounding box
+            // 2. make a respective particle system
+            // 3. set the material to the common "PSF" point material
+            // 4. can toggle their initial visibility at this stage. 
+            // (and that's probably as fancy as you want to get at this point.)
+
+            // later: place a scan box
+            // and, "deactivated"/ghost PSFs 
+
+            // the length of the array is the number of batches.
+            let n = debug_data_arr.length;
+            console.log(n);
+
+            // for (let i = 0; i < n; i++) {
+            //     console.log("boyaaaaaaah")
+            // }
+
+            // expect data_arr and data_scalefac
+            // pass into threejs particle system
+            // display batch by batch
+            // visibility=true for now. can change.
+            // percentages!
+
+            let texture_loader = new THREE.TextureLoader();
+            const PSF_texture = texture_loader.load("./static/images/psf2.png");
+
+            // Points
+            const PSF_material = new THREE.PointsMaterial({
+                size: 20,
+                sizeAttenuation: true,
+                map: PSF_texture,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                // blending: THREE.CustomBlending,
+                // blendEquation: THREE.AddEquation,
+                // blendSrc: THREE.SrcAlphaFactor,
+                // blendDst:THREE.OneMinusSrcAlphaFactor,
+                depthTest: false
+            });
+
+
+
+            function display_stack(points_arr, stack_coords, PSF_material) {
+                console.log(stack_coords[0]);
+                const stack_coord_x = stack_coords[0];
+                const stack_coord_y = stack_coords[1];
+                const stack_coord_z = stack_coords[2];
+
+                // Display points.
+
+                const particles_geometry = new THREE.BufferGeometry;
+                const particles_count = 12;
+
+                // x, y, z for every single particle!
+                const position_array = new Float32Array(particles_count * 3);
+
+                for (let i = 0; i < particles_count * 3; i++) {
+                    position_array[i] = Math.random() - 0.5;
+                }
+
+                particles_geometry.setAttribute('position', new THREE.BufferAttribute(position_array, 3));
+                const particles_mesh = new THREE.Points(particles_geometry, PSF_material);
+                particles_mesh.renderOrder = 1;
+
+                // create a bounding box, using BoxGeometry, to visually contain
+                // the particles in a given stack.
+                // then parent the particle system to this respective stack box
+
+                const scan_box_geometry = new THREE.BoxGeometry(1, 1, 1);
+                const scan_box_material = new THREE.MeshBasicMaterial({ color: 0x3a4443, transparent: true, opacity: 0.25 });
+                const scan_box_mesh = new THREE.Mesh(scan_box_geometry, scan_box_material);
+                
+                // Outline. It's made using a BoxHelper.
+                const scan_box_line = new THREE.BoxHelper(scan_box_mesh, 0x748a87);
+                scan_box_line.material.opacity = 0.9;
+                scan_box_line.material.transparent = true;
+                // scene.add();
+
+                // Parent everything! to the box mesh.
+                scene.add(scan_box_mesh);
+                scan_box_mesh.add(particles_mesh);
+                // scan_box_mesh.add(new THREE.BoxHelper(scan_box_line, scan_box_line_material));
+                scan_box_mesh.add(scan_box_line);
+                scan_box_mesh.position.set(0.5*(stack_coord_x+1), 0.5*(stack_coord_y+1), 0.5*(stack_coord_z+1));
+            }
+
+            display_stack(0, [0, 0, 0], PSF_material);
+
+
+            // Load in external assets
+            let gltf_loader = new GLTFLoader().setPath('static/models/');
+
+            let petri_dish;
+
+            gltf_loader.load('petri_dish.gltf', async function (gltf) {
+                petri_dish = gltf.scene;
+                
+
+                // wait until the model can be added to the scene w/o blocking
+                // due to shader compilation
+
+                await renderer.compileAsync(petri_dish, camera, scene);
+                // scene.add(petri_dish);
+                // render();
+                // petri_dish.material.transparent = true;
+                // petri_dish.material.opacity = 0.1;
+                // render();
+            })
+
+
+
+            // Resize canvas with window ↗️
+
+            function resize_canvas_to_display_size() {
+                const canvas = renderer.domElement;
+                const width = canvas.clientWidth;
+                const height = canvas.clientHeight;
+
+                if (canvas.width !== width || canvas.height !== height) {
+                    console.log(`canvas dimensions: ${width}x${height} (${width / height})`)
+                    renderer.setSize(width, height, false);
+                    camera.aspect = width / height;
+                    camera.updateProjectionMatrix();
+                }
+            }
+
+            function animate(time) {
+                var time = performance.now();
+                time *= 0.001; // convert ms to seconds
+
+                resize_canvas_to_display_size();
+                controls.update(); // damping
+
+                renderer.render(scene, camera);
+                requestAnimationFrame(animate);
+            }
+
+                requestAnimationFrame(animate);
+        }
+
+        main();
+    </script>
+</body>
+</html>
